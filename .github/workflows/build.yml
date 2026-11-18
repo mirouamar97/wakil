@@ -56,9 +56,14 @@ jobs:
           WAKIL_KEY_ALIAS: ${{ secrets.WAKIL_KEY_ALIAS }}
           WAKIL_KEY_PASSWORD: ${{ secrets.WAKIL_KEY_PASSWORD }}
         run: |
-          if [ -z "$WAKIL_KEYSTORE_B64" ]; then echo "signing secrets missing"; exit 1; fi
-          echo "$WAKIL_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/wakil.jks"
-          export WAKIL_KEYSTORE_FILE="$RUNNER_TEMP/wakil.jks"
+          if [ -n "$WAKIL_KEYSTORE_B64" ]; then
+            echo "$WAKIL_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/wakil.jks"
+            export WAKIL_KEYSTORE_FILE="$RUNNER_TEMP/wakil.jks"
+            echo "SIGNING=release-key" >> "$GITHUB_ENV"
+          else
+            echo "No signing secrets: the APK is signed with a throwaway debug key (updates need an uninstall)."
+            echo "SIGNING=debug-key" >> "$GITHUB_ENV"
+          fi
           ./gradlew --no-daemon assembleRelease
           rm -f "$RUNNER_TEMP/wakil.jks"
 
@@ -71,4 +76,4 @@ jobs:
           mkdir -p out
           cp app/build/outputs/apk/release/app-release.apk "out/Wakil-v$V.apk"
           (cd out && sha256sum "Wakil-v$V.apk" > checksums.txt)
-          gh release create "v$V" out/* --title "Wakil v$V" --notes "Automated build of commit ${GITHUB_SHA::7}. Signed APK + SHA256 in checksums.txt."
+          gh release create "v$V" out/* --title "Wakil v$V" --notes "Automated build of commit ${GITHUB_SHA::7}. Signing: ${SIGNING}. SHA256 in checksums.txt."

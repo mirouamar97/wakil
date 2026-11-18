@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">وكيل</string>
+    <string name="chat_hint">اكتب رسالتك…</string>
+    <string name="chat_empty">ابدأ بالتحية. أضف أولاً مفتاح API مجانياً من الإعدادات.</string>
+    <string name="send">إرسال</string>
+    <string name="settings">الإعدادات</string>
+    <string name="back">رجوع</string>
+    <string name="thinking">يفكّر…</string>
+    <string name="answered_by">عبر %1$s</string>
+    <string name="error_no_keys">لا يوجد مفتاح بعد. افتح الإعدادات وأضف مفتاحاً مجانياً (Groq أو Gemini).</string>
+    <string name="error_all_failed">فشلت كل المصادر:</string>
+    <string name="attempt_line">%1$s: %2$s</string>
+
+    <string name="provider_groq">Groq</string>
+    <string name="provider_gemini">Gemini</string>
+    <string name="provider_openrouter">OpenRouter</string>
+    <string name="provider_mistral">Mistral</string>
+    <string name="provider_unknown">؟</string>
+
+    <string name="outcome_ok">ردّ</string>
+    <string name="outcome_rate_limited">بلغ الحدّ</string>
+    <string name="outcome_auth_failed">المفتاح مرفوض</string>
+    <string name="outcome_server_error">خطأ في الخادم</string>
+    <string name="outcome_network_error">لا اتصال</string>
+    <string name="outcome_bad_response">ردّ غير مفهوم</string>
+    <string name="outcome_cooling_down">يستريح</string>
+    <string name="outcome_no_key">لا مفتاح</string>
+
+    <string name="quota_no_key">%1$s · لا مفتاح</string>
+    <string name="quota_resting">%1$s · يستريح (%2$d ث)</string>
+    <string name="quota_counter">%1$s · المتبقي %2$d/%3$d</string>
+    <string name="quota_left">%1$s · المتبقي %2$d</string>
+    <string name="quota_ready">%1$s · جاهز (الحد غير معروف)</string>
+
+    <string name="settings_language">اللغة</string>
+    <string name="lang_ar">العربية</string>
+    <string name="lang_fr">Français</string>
+    <string name="lang_en">English</string>
+    <string name="settings_providers">المزوّدون (بترتيب الأولوية)</string>
+    <string name="keys_hint">المفاتيح تبقى على هذا الهاتف مشفّرة. لا تشاركها مع أحد.</string>
+    <string name="keys_saved">المفاتيح المحفوظة: %1$d</string>
+    <string name="key_field">مفتاح جديد</string>
+    <string name="key_add">أضف المفتاح</string>
+    <string name="key_clear">احذف كل المفاتيح</string>
+    <string name="model_field">اسم النموذج</string>
+</resources>
