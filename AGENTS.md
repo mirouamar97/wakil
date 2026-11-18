@@ -7,7 +7,7 @@ This repository is **public**. Everything committed here is visible to the whole
 1. **No secrets.** No API keys, tokens, passwords, keystores, `.env` files. Users type their own keys into the app; they live only in `EncryptedSharedPreferences` on the device.
 2. **No personal data.** No real names, e-mail addresses, phone numbers, or files belonging to the owner. Use `example.com` / obviously fake values in tests.
 3. **Red paths: agents must not modify them** (an `evolve/*` branch that touches one fails CI):
-   - `.github/workflows/guard.yml`, `scripts/guard.sh`, `.github/CODEOWNERS`
+   - the whole `.github/workflows/` folder (build.yml uses signing secrets), `scripts/guard.sh`, `.github/CODEOWNERS`
    - `app/src/main/java/app/wakil/agent/permissions/` (permission gate, when it exists)
    - anything about signing (`*.jks`, `*.keystore`, signing config in `app/build.gradle.kts`)
    - JobRadar sending rules (ContactStore, daily limits, quiet hours, one message per contact)
