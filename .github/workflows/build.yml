@@ -1,0 +1,74 @@
+name: Build
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # Release is published only from a push to main
+
+jobs:
+  i18n:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Every string key exists in en / ar / fr, no hard-coded UI text
+        run: python3 scripts/check_i18n.py
+
+  build:
+    runs-on: ubuntu-latest
+    needs: i18n
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if the Android project does not exist yet
+        id: has_app
+        run: |
+          if [ -f settings.gradle.kts ]; then echo "yes=true" >> "$GITHUB_OUTPUT"; else echo "yes=false" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-java@v4
+        if: steps.has_app.outputs.yes == 'true'
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.has_app.outputs.yes == 'true'
+
+      - name: Unit tests
+        if: steps.has_app.outputs.yes == 'true'
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Debug APK (pull requests)
+        if: steps.has_app.outputs.yes == 'true' && github.event_name == 'pull_request'
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Signed release APK (main only)
+        if: steps.has_app.outputs.yes == 'true' && github.event_name != 'pull_request'
+        env:
+          WAKIL_KEYSTORE_B64: ${{ secrets.WAKIL_KEYSTORE_B64 }}
+          WAKIL_KEYSTORE_PASSWORD: ${{ secrets.WAKIL_KEYSTORE_PASSWORD }}
+          WAKIL_KEY_ALIAS: ${{ secrets.WAKIL_KEY_ALIAS }}
+          WAKIL_KEY_PASSWORD: ${{ secrets.WAKIL_KEY_PASSWORD }}
+        run: |
+          if [ -z "$WAKIL_KEYSTORE_B64" ]; then echo "signing secrets missing"; exit 1; fi
+          echo "$WAKIL_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/wakil.jks"
+          export WAKIL_KEYSTORE_FILE="$RUNNER_TEMP/wakil.jks"
+          ./gradlew --no-daemon assembleRelease
+          rm -f "$RUNNER_TEMP/wakil.jks"
+
+      - name: Package + publish Release (main only)
+        if: steps.has_app.outputs.yes == 'true' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="0.1.${{ github.run_number }}"
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk "out/Wakil-v$V.apk"
+          (cd out && sha256sum "Wakil-v$V.apk" > checksums.txt)
+          gh release create "v$V" out/* --title "Wakil v$V" --notes "Automated build of commit ${GITHUB_SHA::7}. Signed APK + SHA256 in checksums.txt."
