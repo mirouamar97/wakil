@@ -55,6 +55,7 @@ private val DarkColors = darkColorScheme(
 )
 
 /** Cairo (variable font, SIL OFL) for Arabic and Latin text. */
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
 private val Cairo = FontFamily(
     Font(R.font.cairo, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
     Font(R.font.cairo, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
