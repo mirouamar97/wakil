@@ -42,25 +42,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val transport = HttpChatTransport()
     private val router = ModelRouter(
-        providers = { ProviderCatalog.providers { settingsStore.model(it) } },
+        providers = { ProviderCatalog.providers(settingsStore) },
         keysFor = { keyStore.keys(it) },
-        transport = transport
+        transport = transport,
+        isKillSwitchActive = { settingsStore.isKillSwitchActive() },
     )
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     private var streamJob: Job? = null
+    private var messagesJob: Job? = null
+    private var loadedConversationId: String? = null
 
     init {
         viewModelScope.launch {
             database.conversationDao().getAllConversationsFlow().collect { convs ->
-                val currentId = _uiState.value.currentConversationId ?: convs.firstOrNull()?.id
+                val currentId = _uiState.value.currentConversationId
+                    ?.takeIf { id -> convs.any { it.id == id } }
+                    ?: convs.firstOrNull()?.id
                 _uiState.value = _uiState.value.copy(
                     conversations = convs,
                     currentConversationId = currentId
                 )
-                if (currentId != null) {
+                if (currentId == null && convs.isEmpty()) {
+                    startNewConversation()
+                } else if (currentId != null && currentId != loadedConversationId) {
                     loadMessages(currentId)
                 }
             }
@@ -68,25 +75,32 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startNewConversation() {
+        val id = UUID.randomUUID().toString()
+        val convTitle = getApplication<Application>().getString(app.wakil.agent.R.string.new_chat)
+        val conv = ConversationEntity(id = id, title = convTitle)
+        loadedConversationId = id
+        _uiState.value = _uiState.value.copy(currentConversationId = id, messages = emptyList())
         viewModelScope.launch {
-            val id = UUID.randomUUID().toString()
-            val convTitle = getApplication<Application>().getString(app.wakil.agent.R.string.new_chat)
-            val conv = ConversationEntity(id = id, title = convTitle)
             database.conversationDao().insertConversation(conv)
-            _uiState.value = _uiState.value.copy(currentConversationId = id)
             loadMessages(id)
         }
     }
 
     fun selectConversation(id: String) {
-        _uiState.value = _uiState.value.copy(currentConversationId = id)
+        if (_uiState.value.currentConversationId == id) return
+        loadedConversationId = id
+        _uiState.value = _uiState.value.copy(currentConversationId = id, messages = emptyList())
         loadMessages(id)
     }
 
     private fun loadMessages(conversationId: String) {
-        viewModelScope.launch {
+        messagesJob?.cancel()
+        loadedConversationId = conversationId
+        messagesJob = viewModelScope.launch {
             database.conversationDao().getMessagesForConversationFlow(conversationId).collect { msgs ->
-                _uiState.value = _uiState.value.copy(messages = msgs)
+                if (_uiState.value.currentConversationId == conversationId) {
+                    _uiState.value = _uiState.value.copy(messages = msgs)
+                }
             }
         }
     }
@@ -109,9 +123,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 content = text
             )
             database.conversationDao().insertMessage(userMsg)
+            val conversation = database.conversationDao().getConversationById(convId)
+            if (conversation != null) {
+                val firstUserMessage = database.conversationDao()
+                    .getMessagesForConversation(convId)
+                    .count { it.role == "user" } == 1
+                database.conversationDao().insertConversation(
+                    conversation.copy(
+                        title = if (firstUserMessage) text.take(48) else conversation.title,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
             _uiState.value = _uiState.value.copy(inputText = "", isStreaming = true, currentStreamingChunk = "")
 
-            val history = database.conversationDao().getMessagesForConversation(convId).map {
+            val history = database.conversationDao().getMessagesForConversation(convId)
+                .filter { it.status == "SENT" }
+                .map {
                 val role = when (it.role) {
                     "assistant" -> Role.ASSISTANT
                     "system" -> Role.SYSTEM
@@ -124,10 +152,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val streamedAccumulator = StringBuilder()
 
             streamJob = launch {
-                val result = router.chatStream(history) { chunk ->
-                    streamedAccumulator.append(chunk)
-                    _uiState.value = _uiState.value.copy(currentStreamingChunk = streamedAccumulator.toString())
-                }
+                val result = router.chatStream(
+                    messages = history,
+                    onChunk = { chunk ->
+                        streamedAccumulator.append(chunk)
+                        _uiState.value = _uiState.value.copy(currentStreamingChunk = streamedAccumulator.toString())
+                    },
+                    onAttemptReset = {
+                        streamedAccumulator.setLength(0)
+                        _uiState.value = _uiState.value.copy(currentStreamingChunk = "")
+                    },
+                )
 
                 when (result) {
                     is RouterResult.Success -> {
@@ -143,7 +178,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         database.conversationDao().insertMessage(assistantMsg)
                     }
                     is RouterResult.Failure -> {
-                        val errText = "All providers failed"
+                        val errorRes = if (result.noKeys) {
+                            app.wakil.agent.R.string.no_provider_keys
+                        } else {
+                            app.wakil.agent.R.string.all_providers_failed
+                        }
+                        val errText = getApplication<Application>().getString(errorRes)
                         val assistantMsg = MessageEntity(
                             id = assistantMsgId,
                             conversationId = convId,

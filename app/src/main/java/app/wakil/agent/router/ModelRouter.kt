@@ -5,8 +5,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Tries providers in order and moves to the next one when a key is rate limited (429),
- * rejected (401/403), or the provider fails. Several keys per provider are rotated the same way.
+ * Tries providers in priority order and falls back on rate limits, server errors, and network failures.
+ * Only the first saved key for a provider is used, so additional accounts are never rotated to bypass limits.
  *
  * Quota numbers are never hard-coded: they come from the provider's `x-ratelimit-*` headers.
  * Everything here is pure Kotlin (time and HTTP are injected), so it is unit-tested on the JVM.
@@ -20,6 +20,7 @@ class ModelRouter(
     private val transport: ChatTransport,
     private val config: RouterConfig = RouterConfig(),
     private val nowMs: () -> Long = { System.currentTimeMillis() },
+    private val isKillSwitchActive: () -> Boolean = { false },
 ) {
     private val cooldownUntil = HashMap<String, Long>()   // "provider#keyIndex" -> epoch ms
     private val rejectedKeys = HashSet<String>()           // keys the provider refused (401/403)
@@ -27,78 +28,101 @@ class ModelRouter(
 
     private fun slot(providerId: String, index: Int) = "$providerId#$index"
 
-    suspend fun chat(messages: List<ChatMessage>): RouterResult = executeCall(messages, streamCallback = null)
+    suspend fun chat(messages: List<ChatMessage>): RouterResult =
+        executeCall(messages, streamCallback = null, resetStreamCallback = null)
 
     suspend fun chatStream(
         messages: List<ChatMessage>,
-        onChunk: (String) -> Unit
-    ): RouterResult = executeCall(messages, streamCallback = onChunk)
+        onChunk: (String) -> Unit,
+        onAttemptReset: () -> Unit = {},
+    ): RouterResult = executeCall(messages, streamCallback = onChunk, resetStreamCallback = onAttemptReset)
 
     private suspend fun executeCall(
         messages: List<ChatMessage>,
-        streamCallback: ((String) -> Unit)?
+        streamCallback: ((String) -> Unit)?,
+        resetStreamCallback: (() -> Unit)?,
     ): RouterResult {
         val attempts = ArrayList<AttemptLog>()
         val body = buildBody(messages)
         for (p in providers()) {
-            val keys = keysFor(p.id)
-            if (keys.isEmpty()) {
+            val key = keysFor(p.id).firstOrNull()
+            if (key == null) {
                 attempts += AttemptLog(p.id, -1, Outcome.NO_KEY)
                 continue
             }
-            for ((i, key) in keys.withIndex()) {
-                val s = slot(p.id, i)
-                val skipped = skipReason(s, key)
-                if (skipped != null) {
-                    attempts += AttemptLog(p.id, i, skipped)
-                    continue
+            val index = 0
+            val s = slot(p.id, index)
+            val skipped = skipReason(s, key)
+            if (skipped != null) {
+                attempts += AttemptLog(p.id, index, skipped)
+                continue
+            }
+            if (isKillSwitchActive()) {
+                attempts += AttemptLog(p.id, index, Outcome.KILL_SWITCH_ACTIVE)
+                return RouterResult.Failure(attempts)
+            }
+
+            val targetUrl = p.baseUrl.trimEnd('/') + "/chat/completions"
+            val payload = bodyWithModel(body, p.model)
+            val attemptChunks = StringBuilder()
+            fun discardPartialStream() {
+                if (attemptChunks.isNotEmpty()) {
+                    attemptChunks.setLength(0)
+                    resetStreamCallback?.invoke()
                 }
+            }
 
-                val targetUrl = p.baseUrl.trimEnd('/') + "/chat/completions"
-                val payload = bodyWithModel(body, p.model)
-
-                val reply = try {
-                    if (streamCallback != null) {
-                        transport.stream(targetUrl, key, payload, streamCallback)
-                    } else {
-                        transport.post(targetUrl, key, payload)
+            val reply = try {
+                if (streamCallback != null) {
+                    transport.stream(targetUrl, key, payload, p.requestHeaders) { chunk ->
+                        attemptChunks.append(chunk)
+                        streamCallback.invoke(chunk)
                     }
-                } catch (e: IOException) {
+                } else {
+                    transport.post(targetUrl, key, payload, p.requestHeaders)
+                }
+            } catch (e: IOException) {
+                discardPartialStream()
+                rest(s, config.errorCooldownMs)
+                attempts += AttemptLog(p.id, index, Outcome.NETWORK_ERROR)
+                continue
+            }
+
+            val headers = RateLimit.lower(reply.headers)
+            when {
+                reply.status in 200..299 -> {
+                    val text = extractText(reply.body)
+                    RateLimit.parseQuota(headers, nowMs())?.let { q ->
+                        synchronized(this) { quota[p.id] = q }
+                        if (q.remainingRequests == 0L && q.resetAtMs != null) rest(s, q.resetAtMs - nowMs())
+                    }
+                    if (text == null) {
+                        discardPartialStream()
+                        attempts += AttemptLog(p.id, index, Outcome.BAD_RESPONSE)
+                        continue
+                    }
+                    attempts += AttemptLog(p.id, index, Outcome.OK)
+                    return RouterResult.Success(text, p.id, p.model, attempts)
+                }
+                reply.status == 429 -> {
+                    discardPartialStream()
+                    rest(s, RateLimit.cooldownFor429(headers) ?: config.defaultCooldownMs)
+                    RateLimit.parseQuota(headers, nowMs())?.let { q -> synchronized(this) { quota[p.id] = q } }
+                    attempts += AttemptLog(p.id, index, Outcome.RATE_LIMITED)
+                }
+                reply.status == 401 || reply.status == 403 -> {
+                    discardPartialStream()
+                    synchronized(this) { rejectedKeys += key }
+                    attempts += AttemptLog(p.id, index, Outcome.AUTH_FAILED)
+                }
+                reply.status >= 500 -> {
+                    discardPartialStream()
                     rest(s, config.errorCooldownMs)
-                    attempts += AttemptLog(p.id, i, Outcome.NETWORK_ERROR)
-                    continue
+                    attempts += AttemptLog(p.id, index, Outcome.SERVER_ERROR)
                 }
-
-                val headers = RateLimit.lower(reply.headers)
-                when {
-                    reply.status in 200..299 -> {
-                        val text = extractText(reply.body)
-                        RateLimit.parseQuota(headers, nowMs())?.let { q ->
-                            synchronized(this) { quota[p.id] = q }
-                            // The provider says the budget is spent: rest this key until its reset.
-                            if (q.remainingRequests == 0L && q.resetAtMs != null) rest(s, q.resetAtMs - nowMs())
-                        }
-                        if (text == null) {
-                            attempts += AttemptLog(p.id, i, Outcome.BAD_RESPONSE)
-                            continue
-                        }
-                        attempts += AttemptLog(p.id, i, Outcome.OK)
-                        return RouterResult.Success(text, p.id, p.model, attempts)
-                    }
-                    reply.status == 429 -> {
-                        rest(s, RateLimit.cooldownFor429(headers) ?: config.defaultCooldownMs)
-                        RateLimit.parseQuota(headers, nowMs())?.let { q -> synchronized(this) { quota[p.id] = q } }
-                        attempts += AttemptLog(p.id, i, Outcome.RATE_LIMITED)
-                    }
-                    reply.status == 401 || reply.status == 403 -> {
-                        synchronized(this) { rejectedKeys += key }
-                        attempts += AttemptLog(p.id, i, Outcome.AUTH_FAILED)
-                    }
-                    reply.status >= 500 -> {
-                        rest(s, config.errorCooldownMs)
-                        attempts += AttemptLog(p.id, i, Outcome.SERVER_ERROR)
-                    }
-                    else -> attempts += AttemptLog(p.id, i, Outcome.BAD_RESPONSE)
+                else -> {
+                    discardPartialStream()
+                    attempts += AttemptLog(p.id, index, Outcome.BAD_RESPONSE)
                 }
             }
         }
@@ -111,7 +135,7 @@ class ModelRouter(
     fun status(): List<ProviderStatus> = synchronized(this) {
         val now = nowMs()
         providers().map { p ->
-            val keys = keysFor(p.id)
+            val keys = keysFor(p.id).take(1)
             val live = keys.withIndex().filter { (_, k) -> k !in rejectedKeys }
             val allResting = live.isNotEmpty() && live.all { (i, _) -> (cooldownUntil[slot(p.id, i)] ?: 0L) > now }
             val until = if (allResting) live.minOf { (i, _) -> cooldownUntil[slot(p.id, i)]!! } else null

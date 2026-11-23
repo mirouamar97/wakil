@@ -5,6 +5,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
+import java.time.ZoneId
 
 class LifeRulesTest {
 
@@ -28,6 +30,21 @@ class LifeRulesTest {
         assertEquals("t2", top3[1].taskId)
         assertEquals("reason_due_today", top3[1].reasonKey)
         assertEquals("t4", top3[2].taskId)
+    }
+
+    @Test
+    fun taskTomorrowIsNotClassifiedAsDueTodayJustBecauseItIsWithin24Hours() {
+        val zone = ZoneId.systemDefault()
+        val now = LocalDate.of(2024, 1, 1).atTime(23, 30).atZone(zone).toInstant().toEpochMilli()
+        val tomorrow = LocalDate.of(2024, 1, 2).atTime(0, 30).atZone(zone).toInstant().toEpochMilli()
+        val result = LifeRules.calculateTop3Priorities(
+            tasks = listOf(TaskRuleInput("task", title = "Tomorrow", priority = TaskPriority.LOW, dueDate = tomorrow)),
+            activeProjects = emptyList(),
+            nowEpochMs = now
+        )
+
+        assertEquals(50, result.single().score)
+        assertEquals("reason_priority_standard", result.single().reasonKey)
     }
 
     @Test

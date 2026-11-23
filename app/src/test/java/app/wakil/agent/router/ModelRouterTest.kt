@@ -14,8 +14,19 @@ class ModelRouterTest {
         private val script: (url: String, key: String) -> HttpReply
     ) : ChatTransport {
         val calls = ArrayList<Pair<String, String>>()
+        val callHeaders = ArrayList<Map<String, String>>()
         override suspend fun post(url: String, apiKey: String, body: String): HttpReply {
+            return post(url, apiKey, body, emptyMap())
+        }
+
+        override suspend fun post(
+            url: String,
+            apiKey: String,
+            body: String,
+            headers: Map<String, String>,
+        ): HttpReply {
             calls += url to apiKey
+            callHeaders += headers
             return script(url, apiKey)
         }
 
@@ -25,7 +36,18 @@ class ModelRouterTest {
             body: String,
             onChunk: (String) -> Unit
         ): HttpReply {
+            return stream(url, apiKey, body, emptyMap(), onChunk)
+        }
+
+        override suspend fun stream(
+            url: String,
+            apiKey: String,
+            body: String,
+            headers: Map<String, String>,
+            onChunk: (String) -> Unit,
+        ): HttpReply {
             calls += url to apiKey
+            callHeaders += headers
             val reply = script(url, apiKey)
             if (reply.status in 200..299) {
                 // simulate chunking
@@ -63,7 +85,10 @@ class ModelRouterTest {
     @Test fun streamingEmitsChunksAndSucceeds() = runBlocking {
         val t = FakeTransport { _, _ -> ok("hello") }
         val chunks = mutableListOf<String>()
-        val r = router(t, mapOf("groq" to listOf("k1"))).chatStream(msgs) { chunks.add(it) }
+        val r = router(t, mapOf("groq" to listOf("k1"))).chatStream(
+            messages = msgs,
+            onChunk = { chunks.add(it) },
+        )
         r as RouterResult.Success
         assertEquals("hello", r.text)
         assertEquals(listOf("chunk1 ", "chunk2"), chunks)
@@ -73,6 +98,22 @@ class ModelRouterTest {
         val t = FakeTransport { _, _ -> ok("x") }
         router(t, mapOf("gemini" to listOf("k")), listOf(gemini)).chat(msgs)
         assertEquals("https://gemini.example/v1/chat/completions", t.calls[0].first)
+    }
+
+    @Test fun providerSpecificHeadersReachBothRegularAndStreamingRequests() = runBlocking {
+        val cloudflare = Provider(
+            "cloudflare",
+            "https://cloudflare.example/accounts/account/ai/v1",
+            "@cf/model",
+            mapOf("cf-aig-gateway-id" to "default"),
+        )
+        val regular = FakeTransport { _, _ -> ok("regular") }
+        router(regular, mapOf("cloudflare" to listOf("token")), listOf(cloudflare)).chat(msgs)
+        assertEquals(mapOf("cf-aig-gateway-id" to "default"), regular.callHeaders.single())
+
+        val streaming = FakeTransport { _, _ -> ok("streamed") }
+        router(streaming, mapOf("cloudflare" to listOf("token")), listOf(cloudflare)).chatStream(msgs, {})
+        assertEquals(mapOf("cf-aig-gateway-id" to "default"), streaming.callHeaders.single())
     }
 
     @Test fun movesToNextProviderOn429() = runBlocking {
@@ -101,12 +142,110 @@ class ModelRouterTest {
         assertEquals("groq", t.calls[3].first.substringAfter("//").substringBefore(".example"))
     }
 
-    @Test fun rotatesKeysInsideOneProvider() = runBlocking {
-        val t = FakeTransport { _, key -> if (key == "bad") HttpReply(429, "{}", emptyMap()) else ok("good") }
-        val r = router(t, mapOf("groq" to listOf("bad", "fine"))).chat(msgs)
+    @Test fun doesNotRotateAccountsAfterRateLimit() = runBlocking {
+        val t = FakeTransport { url, key ->
+            if ("groq" in url) {
+                assertEquals("first-account-key", key)
+                HttpReply(429, "{}", emptyMap())
+            } else {
+                ok("fallback provider")
+            }
+        }
+        val r = router(
+            t,
+            mapOf("groq" to listOf("first-account-key", "second-account-key"), "gemini" to listOf("fallback-key"))
+        ).chat(msgs)
         r as RouterResult.Success
-        assertEquals("groq", r.providerId)
-        assertEquals(listOf("bad", "fine"), t.calls.map { it.second })
+        assertEquals("gemini", r.providerId)
+        assertEquals(listOf("first-account-key", "fallback-key"), t.calls.map { it.second })
+        assertEquals(Outcome.RATE_LIMITED, r.attempts.first().outcome)
+    }
+
+    @Test fun failedStreamingAttemptsAreClearedBeforeFallback() = runBlocking {
+        val providers = listOf(groq, gemini, Provider("cloudflare", "https://cloudflare.example/v1", "m-cf"))
+        var visibleText = StringBuilder()
+        val t = object : ChatTransport {
+            override suspend fun post(url: String, apiKey: String, body: String): HttpReply =
+                error("Streaming request expected")
+
+            override suspend fun stream(
+                url: String,
+                apiKey: String,
+                body: String,
+                onChunk: (String) -> Unit
+            ): HttpReply {
+                when {
+                    "groq" in url -> {
+                        onChunk("partial from server error")
+                        return HttpReply(503, "", emptyMap())
+                    }
+                    "gemini" in url -> {
+                        onChunk("partial from network error")
+                        throw IOException("connection closed")
+                    }
+                    else -> {
+                        onChunk("clean ")
+                        onChunk("response")
+                        return ok("clean response")
+                    }
+                }
+            }
+        }
+        val rt = ModelRouter(
+            providers = { providers },
+            keysFor = { listOf("test-key") },
+            transport = t,
+            nowMs = { now },
+        )
+        val result = rt.chatStream(
+            messages = msgs,
+            onChunk = { visibleText.append(it) },
+            onAttemptReset = { visibleText = StringBuilder() },
+        )
+
+        result as RouterResult.Success
+        assertEquals("clean response", result.text)
+        assertEquals("clean response", visibleText.toString())
+        assertEquals(listOf(Outcome.SERVER_ERROR, Outcome.NETWORK_ERROR, Outcome.OK), result.attempts.map { it.outcome })
+    }
+
+    @Test fun killSwitchIsCheckedBeforeEveryProviderAttempt() = runBlocking {
+        var killSwitchActive = false
+        val t = object : ChatTransport {
+            val calls = mutableListOf<String>()
+            override suspend fun post(url: String, apiKey: String, body: String): HttpReply {
+                calls += url
+                killSwitchActive = true
+                return HttpReply(503, "", emptyMap())
+            }
+        }
+        val rt = ModelRouter(
+            providers = { listOf(groq, gemini) },
+            keysFor = { listOf("test-key") },
+            transport = t,
+            nowMs = { now },
+            isKillSwitchActive = { killSwitchActive },
+        )
+
+        val result = rt.chat(msgs) as RouterResult.Failure
+        assertEquals(1, t.calls.size)
+        assertEquals(Outcome.SERVER_ERROR, result.attempts[0].outcome)
+        assertEquals(Outcome.KILL_SWITCH_ACTIVE, result.attempts[1].outcome)
+    }
+
+    @Test fun activeKillSwitchPreventsFirstNetworkAttempt() = runBlocking {
+        val t = FakeTransport { _, _ -> ok("should not be sent") }
+        val rt = ModelRouter(
+            providers = { listOf(groq) },
+            keysFor = { listOf("test-key") },
+            transport = t,
+            nowMs = { now },
+            isKillSwitchActive = { true },
+        )
+
+        val result = rt.chat(msgs) as RouterResult.Failure
+        assertTrue(t.calls.isEmpty())
+        assertEquals(Outcome.KILL_SWITCH_ACTIVE, result.attempts.single().outcome)
     }
 
     @Test fun refusedKeyIsNotRetried() = runBlocking {
@@ -209,5 +348,47 @@ class ModelRouterTest {
         assertEquals("m-groq", j.getString("model"))
         assertEquals("user", j.getJSONArray("messages").getJSONObject(0).getString("role"))
         assertEquals("hi", j.getJSONArray("messages").getJSONObject(0).getString("content"))
+    }
+
+    @Test fun everyProviderUsesItsOfficialEndpointAndOpenAiCompatibleRequestShape() = runBlocking {
+        val accountId = "0123456789abcdef0123456789abcdef"
+        val providers = app.wakil.agent.data.ProviderCatalog.createProviders(cloudflareAccountId = accountId)
+        val urls = mutableListOf<String>()
+        val keys = mutableListOf<String>()
+        val models = mutableListOf<String>()
+        val t = object : ChatTransport {
+            override suspend fun post(url: String, apiKey: String, body: String): HttpReply {
+                urls += url
+                keys += apiKey
+                models += org.json.JSONObject(body).getString("model")
+                return HttpReply(
+                    200,
+                    """{"model":"provider-response","choices":[{"message":{"role":"assistant","content":"provider reply"}}]}""",
+                    emptyMap(),
+                )
+            }
+        }
+        val expectedUrls = mapOf(
+            "cloudflare" to "https://api.cloudflare.com/client/v4/accounts/$accountId/ai/v1/chat/completions",
+            "gemini" to "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            "groq" to "https://api.groq.com/openai/v1/chat/completions",
+            "openrouter" to "https://openrouter.ai/api/v1/chat/completions",
+            "mistral" to "https://api.mistral.ai/v1/chat/completions",
+        )
+        for (provider in providers) {
+            val router = ModelRouter(
+                providers = { listOf(provider) },
+                keysFor = { listOf("mock-key-" + provider.id) },
+                transport = t,
+                nowMs = { now },
+            )
+            val result = router.chat(msgs) as RouterResult.Success
+            assertEquals("provider reply", result.text)
+            assertEquals(provider.id, result.providerId)
+        }
+
+        assertEquals(providers.map { expectedUrls.getValue(it.id) }, urls)
+        assertEquals(providers.map { "mock-key-" + it.id }, keys)
+        assertEquals(providers.map { it.model }, models)
     }
 }

@@ -96,7 +96,13 @@ fun CommandCenterScreen(viewModel: CommandCenterViewModel) {
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "${briefing.topPriorities.size} · ${briefing.activeProjectsCount}",
+                            text = stringResource(
+                                R.string.daily_briefing_summary,
+                                briefing.topPriorities.size,
+                                briefing.overdueCount,
+                                briefing.activeProjectsCount,
+                                briefing.activeProjectsWithoutNextAction
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -128,6 +134,15 @@ fun CommandCenterScreen(viewModel: CommandCenterViewModel) {
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                                 style = MaterialTheme.typography.bodyMedium
                             )
+                            check.suggestedToPauseId?.let { suggestedId ->
+                                state.activeProjects.firstOrNull { it.id == suggestedId }?.let { project ->
+                                    Text(
+                                        text = stringResource(R.string.suggest_pause_project, project.title),
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
                         }
                     }
                 }

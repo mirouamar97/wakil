@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 
-/** Non-secret preferences: language, per-provider model names, KillSwitch, and project limits. */
+/** Non-secret preferences: language, provider configuration, Kill Switch, and project limits. */
 class SettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences("wakil_settings", Context.MODE_PRIVATE)
 
@@ -14,7 +14,32 @@ class SettingsStore(context: Context) {
         prefs.edit().putString("model.$providerId", model.trim()).apply()
     }
 
-    /** "ar", "fr" or "en". Arabic is the default on first launch. */
+    fun cloudflareAccountId(): String? =
+        ProviderCatalog.normalizeCloudflareAccountId(prefs.getString("cloudflare_account_id", null))
+
+    /** Blank clears the optional account ID; invalid IDs are rejected and never placed in a URL. */
+    fun setCloudflareAccountId(id: String): Boolean {
+        val clean = id.trim()
+        if (clean.isEmpty()) {
+            prefs.edit().remove("cloudflare_account_id").apply()
+            return true
+        }
+        val normalized = ProviderCatalog.normalizeCloudflareAccountId(clean) ?: return false
+        prefs.edit().putString("cloudflare_account_id", normalized).apply()
+        return true
+    }
+
+    fun providerPriority(): List<String> {
+        val csv = prefs.getString("provider_priority", null)?.trim().orEmpty()
+        if (csv.isEmpty()) return ProviderCatalog.defaultPriority
+        return ProviderCatalog.normalizePriority(csv.split(",").map { it.trim() })
+    }
+
+    fun setProviderPriority(order: List<String>) {
+        val csv = ProviderCatalog.normalizePriority(order).joinToString(",")
+        prefs.edit().putString("provider_priority", csv).apply()
+    }
+
     fun language(): String = prefs.getString("lang", null) ?: DEFAULT_LANGUAGE
 
     fun setLanguage(tag: String) {
