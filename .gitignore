@@ -7,3 +7,6 @@ local.properties
 .env.*
 .idea/
 *.iml
+
+# Local workspace planning notes
+WAKIL_*.md

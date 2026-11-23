@@ -28,16 +28,19 @@ mailhits=$(echo "$files" | grep -vE '^(scripts/guard\.sh|\.gitleaks\.toml|gradle
   | grep -viE 'noreply@' || true)
 [ -n "$mailhits" ] && say "e-mail address found (values hidden):" && echo "$mailhits" | cut -d: -f1,2 | sort -u | head -20
 
-# 3) Red paths: agent branches may not touch them
-red='^(\.github/workflows/guard\.yml|scripts/guard\.sh|\.github/CODEOWNERS|\.gitleaks\.toml|app/src/main/java/app/wakil/agent/permissions/|.*\.jks|.*\.keystore)'
+# 3) Red paths: agent/rebuild branches may not touch them
+red='^(\.github/|scripts/guard\.sh|\.github/CODEOWNERS|\.gitleaks\.toml|app/src/main/java/app/wakil/agent/permissions/|.*\.jks|.*\.keystore)'
 head_ref="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}"
 base_ref="${GITHUB_BASE_REF:-main}"
 case "$head_ref" in
-  evolve/*|agent/*)
-    git fetch -q origin "$base_ref" 2>/dev/null || true
-    changed=$(git diff --name-only "origin/$base_ref"...HEAD 2>/dev/null || true)
-    touched=$(echo "$changed" | grep -E "$red" || true)
-    [ -n "$touched" ] && say "agent branch '$head_ref' touches red paths:" && echo "$touched"
+  evolve/*|agent/*|claude/*|opencode/*|gemini/*|rebuild)
+    if ! git fetch -q origin "$base_ref"; then
+      say "failed to fetch origin/$base_ref (failing closed)"
+    else
+      changed=$(git diff --name-only "origin/$base_ref"...HEAD 2>/dev/null) || { say "git diff failed (failing closed)"; changed=""; }
+      touched=$(echo "$changed" | grep -E "$red" || true)
+      [ -n "$touched" ] && say "branch '$head_ref' touches red paths:" && echo "$touched"
+    fi
     ;;
 esac
 

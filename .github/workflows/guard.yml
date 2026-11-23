@@ -17,6 +17,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Ensure guard.sh is executed from base branch on PR
+        if: github.event_name == 'pull_request'
+        run: |
+          git checkout "origin/${{ github.base_ref }}" -- scripts/guard.sh || true
+
       - name: Forbidden files, personal-data patterns, red paths
         run: bash scripts/guard.sh
 
