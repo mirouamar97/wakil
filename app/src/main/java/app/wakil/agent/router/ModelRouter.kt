@@ -27,7 +27,17 @@ class ModelRouter(
 
     private fun slot(providerId: String, index: Int) = "$providerId#$index"
 
-    suspend fun chat(messages: List<ChatMessage>): RouterResult {
+    suspend fun chat(messages: List<ChatMessage>): RouterResult = executeCall(messages, streamCallback = null)
+
+    suspend fun chatStream(
+        messages: List<ChatMessage>,
+        onChunk: (String) -> Unit
+    ): RouterResult = executeCall(messages, streamCallback = onChunk)
+
+    private suspend fun executeCall(
+        messages: List<ChatMessage>,
+        streamCallback: ((String) -> Unit)?
+    ): RouterResult {
         val attempts = ArrayList<AttemptLog>()
         val body = buildBody(messages)
         for (p in providers()) {
@@ -44,8 +54,15 @@ class ModelRouter(
                     continue
                 }
 
+                val targetUrl = p.baseUrl.trimEnd('/') + "/chat/completions"
+                val payload = bodyWithModel(body, p.model)
+
                 val reply = try {
-                    transport.post(p.baseUrl.trimEnd('/') + "/chat/completions", key, bodyWithModel(body, p.model))
+                    if (streamCallback != null) {
+                        transport.stream(targetUrl, key, payload, streamCallback)
+                    } else {
+                        transport.post(targetUrl, key, payload)
+                    }
                 } catch (e: IOException) {
                     rest(s, config.errorCooldownMs)
                     attempts += AttemptLog(p.id, i, Outcome.NETWORK_ERROR)

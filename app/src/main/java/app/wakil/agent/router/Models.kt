@@ -13,10 +13,21 @@ data class Provider(val id: String, val baseUrl: String, val model: String)
 
 data class HttpReply(val status: Int, val body: String, val headers: Map<String, String>)
 
-/** Sends one chat-completions POST. Implementations throw [IOException] on network failure. */
+/** Sends one chat-completions POST or streams chunks. Implementations throw [IOException] on network failure. */
 interface ChatTransport {
     @Throws(IOException::class)
     suspend fun post(url: String, apiKey: String, body: String): HttpReply
+
+    @Throws(IOException::class)
+    suspend fun stream(
+        url: String,
+        apiKey: String,
+        body: String,
+        onChunk: (String) -> Unit
+    ): HttpReply {
+        val reply = post(url, apiKey, body)
+        return reply
+    }
 }
 
 /** Quota as reported by the provider's response headers. Null = the provider did not say. */

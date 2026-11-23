@@ -14,6 +14,7 @@
 
     <string name="provider_groq">Groq</string>
     <string name="provider_gemini">Gemini</string>
+    <string name="provider_cloudflare">Cloudflare</string>
     <string name="provider_openrouter">OpenRouter</string>
     <string name="provider_mistral">Mistral</string>
     <string name="provider_unknown">?</string>
@@ -44,4 +45,86 @@
     <string name="key_add">Add key</string>
     <string name="key_clear">Remove all keys</string>
     <string name="model_field">Model name</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_projects">Projects</string>
+    <string name="nav_chat">Chat</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Command Center -->
+    <string name="command_center_title">Command Center</string>
+    <string name="top_priorities_title">Top 3 Priorities</string>
+    <string name="overdue_tasks_title">Overdue Tasks</string>
+    <string name="active_projects_title">Active Projects</string>
+    <string name="quick_capture_hint">Quick capture task or note…</string>
+    <string name="quick_capture_button">Capture</string>
+    <string name="daily_briefing_title">Daily Briefing</string>
+    <string name="next_action_label">Next action: %1$s</string>
+    <string name="no_next_action_warn">No next action set!</string>
+    <string name="no_priorities_yet">No pending priorities. Enjoy your day!</string>
+    <string name="no_overdue_tasks">No overdue tasks.</string>
+    <string name="no_active_projects">No active projects right now.</string>
+
+    <!-- Reasons -->
+    <string name="reason_overdue">Overdue</string>
+    <string name="reason_due_today">Due today</string>
+    <string name="reason_high_priority">High priority</string>
+    <string name="reason_active_project">Active project</string>
+    <string name="reason_in_progress">In progress</string>
+    <string name="reason_priority_standard">Scheduled</string>
+    <string name="warn_active_projects_limit">Active projects limit exceeded! Consider pausing one.</string>
+    <string name="suggest_pause_project">Suggested to pause: %1$s</string>
+
+    <!-- Projects and Tasks -->
+    <string name="projects_title">Projects</string>
+    <string name="tasks_title">Tasks</string>
+    <string name="goals_title">Goals</string>
+    <string name="notes_title">Notes</string>
+    <string name="filter_all">All</string>
+    <string name="filter_active">Active</string>
+    <string name="filter_completed">Completed</string>
+    <string name="status_idea">Idea</string>
+    <string name="status_planned">Planned</string>
+    <string name="status_active">Active</string>
+    <string name="status_paused">Paused</string>
+    <string name="status_completed">Completed</string>
+    <string name="status_archived">Archived</string>
+    <string name="add_project">Add Project</string>
+    <string name="add_task">Add Task</string>
+    <string name="add_goal">Add Goal</string>
+    <string name="add_note">Add Note</string>
+    <string name="title_field">Title</string>
+    <string name="description_field">Description</string>
+    <string name="next_action_field">Next Action</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete">Delete</string>
+    <string name="undo">Undo</string>
+    <string name="undo_success">Undone successfully</string>
+    <string name="undo_failed">Nothing to undo</string>
+
+    <!-- Chat & Actions -->
+    <string name="conversations_title">Conversations</string>
+    <string name="new_chat">New Chat</string>
+    <string name="stop_generating">Stop</string>
+    <string name="confirm_action_title">Approval Required</string>
+    <string name="confirm_action_desc">The assistant wants to perform: %1$s</string>
+    <string name="approve">Approve</string>
+    <string name="reject">Reject</string>
+
+    <!-- Settings Extra -->
+    <string name="kill_switch_title">Emergency Kill Switch</string>
+    <string name="kill_switch_desc">Instantly blocks all assistant actions and tools</string>
+    <string name="max_projects_title">Active Projects Limit</string>
+    <string name="export_backup">Export JSON Backup</string>
+    <string name="import_backup">Import JSON Backup</string>
+    <string name="backup_success">Backup processed successfully</string>
+    <string name="backup_failed">Backup operation failed</string>
+    <string name="import_preview_title">Backup Preview</string>
+    <string name="import_confirm">Confirm Import</string>
+    <string name="action_logs_title">Action History</string>
+    <string name="memories_title">Learned Memories</string>
+    <string name="no_memories">No memories saved yet.</string>
+    <string name="no_logs">No action logs yet.</string>
 </resources>

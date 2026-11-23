@@ -10,11 +10,29 @@ import org.junit.Test
 
 class ModelRouterTest {
 
-    private class FakeTransport(private val script: (url: String, key: String) -> HttpReply) : ChatTransport {
+    private class FakeTransport(
+        private val script: (url: String, key: String) -> HttpReply
+    ) : ChatTransport {
         val calls = ArrayList<Pair<String, String>>()
         override suspend fun post(url: String, apiKey: String, body: String): HttpReply {
             calls += url to apiKey
             return script(url, apiKey)
+        }
+
+        override suspend fun stream(
+            url: String,
+            apiKey: String,
+            body: String,
+            onChunk: (String) -> Unit
+        ): HttpReply {
+            calls += url to apiKey
+            val reply = script(url, apiKey)
+            if (reply.status in 200..299) {
+                // simulate chunking
+                onChunk("chunk1 ")
+                onChunk("chunk2")
+            }
+            return reply
         }
     }
 
@@ -40,6 +58,15 @@ class ModelRouterTest {
         assertEquals("groq", r.providerId)
         assertEquals(1, t.calls.size)
         assertEquals("https://groq.example/v1/chat/completions", t.calls[0].first)
+    }
+
+    @Test fun streamingEmitsChunksAndSucceeds() = runBlocking {
+        val t = FakeTransport { _, _ -> ok("hello") }
+        val chunks = mutableListOf<String>()
+        val r = router(t, mapOf("groq" to listOf("k1"))).chatStream(msgs) { chunks.add(it) }
+        r as RouterResult.Success
+        assertEquals("hello", r.text)
+        assertEquals(listOf("chunk1 ", "chunk2"), chunks)
     }
 
     @Test fun trailingSlashInBaseUrlIsHandled() = runBlocking {

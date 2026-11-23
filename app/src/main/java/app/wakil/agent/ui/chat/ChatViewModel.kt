@@ -6,97 +6,172 @@ import androidx.lifecycle.viewModelScope
 import app.wakil.agent.data.ProviderCatalog
 import app.wakil.agent.data.SecureKeyStore
 import app.wakil.agent.data.SettingsStore
-import app.wakil.agent.router.AttemptLog
+import app.wakil.agent.data.local.WakilDatabase
+import app.wakil.agent.data.local.entities.ConversationEntity
+import app.wakil.agent.data.local.entities.MessageEntity
 import app.wakil.agent.router.ChatMessage
 import app.wakil.agent.router.HttpChatTransport
 import app.wakil.agent.router.ModelRouter
-import app.wakil.agent.router.ProviderStatus
 import app.wakil.agent.router.Role
 import app.wakil.agent.router.RouterResult
+import app.wakil.agent.tools.AgentTools
+import app.wakil.agent.tools.ToolExecutionResult
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
-data class UiMessage(val id: Long, val role: Role, val text: String, val providerId: String? = null)
+data class ChatUiState(
+    val conversations: List<ConversationEntity> = emptyList(),
+    val currentConversationId: String? = null,
+    val messages: List<MessageEntity> = emptyList(),
+    val inputText: String = "",
+    val isStreaming: Boolean = false,
+    val currentStreamingChunk: String = "",
+    val pendingApproval: ToolExecutionResult.RequiresApproval? = null,
+    val lastError: String? = null
+)
 
-sealed interface ChatError {
-    data object NoKeys : ChatError
-    data class AllFailed(val attempts: List<AttemptLog>) : ChatError
-}
+class ChatViewModel(application: Application) : AndroidViewModel(application) {
+    private val database = WakilDatabase.getInstance(application)
+    private val keyStore = SecureKeyStore(application)
+    private val settingsStore = SettingsStore(application)
+    private val agentTools = AgentTools(database, settingsStore)
 
-class ChatViewModel(app: Application) : AndroidViewModel(app) {
-    private val keyStore = SecureKeyStore(app)
-    val settings = SettingsStore(app)
-
+    private val transport = HttpChatTransport()
     private val router = ModelRouter(
-        providers = { ProviderCatalog.providers(settings::model) },
-        keysFor = keyStore::keys,
-        transport = HttpChatTransport(),
+        providers = { ProviderCatalog.providers { settingsStore.model(it) } },
+        keysFor = { keyStore.keys(it) },
+        transport = transport
     )
 
-    private val _messages = MutableStateFlow<List<UiMessage>>(emptyList())
-    val messages: StateFlow<List<UiMessage>> = _messages.asStateFlow()
+    private val _uiState = MutableStateFlow(ChatUiState())
+    val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
-    private val _sending = MutableStateFlow(false)
-    val sending: StateFlow<Boolean> = _sending.asStateFlow()
+    private var streamJob: Job? = null
 
-    private val _error = MutableStateFlow<ChatError?>(null)
-    val error: StateFlow<ChatError?> = _error.asStateFlow()
-
-    private val _status = MutableStateFlow<List<ProviderStatus>>(router.status())
-    val status: StateFlow<List<ProviderStatus>> = _status.asStateFlow()
-
-    private var nextId = 1L
-
-    fun send(text: String) {
-        val clean = text.trim()
-        if (clean.isEmpty() || _sending.value) return
-        _messages.value = _messages.value + UiMessage(nextId++, Role.USER, clean)
-        _error.value = null
-        _sending.value = true
+    init {
         viewModelScope.launch {
-            val history = listOf(ChatMessage(Role.SYSTEM, SYSTEM_PROMPT)) +
-                _messages.value.map { ChatMessage(it.role, it.text) }
-            when (val result = router.chat(history)) {
-                is RouterResult.Success ->
-                    _messages.value = _messages.value + UiMessage(nextId++, Role.ASSISTANT, result.text, result.providerId)
-                is RouterResult.Failure ->
-                    _error.value = if (result.noKeys) ChatError.NoKeys else ChatError.AllFailed(result.attempts)
+            database.conversationDao().getAllConversationsFlow().collect { convs ->
+                val currentId = _uiState.value.currentConversationId ?: convs.firstOrNull()?.id
+                _uiState.value = _uiState.value.copy(
+                    conversations = convs,
+                    currentConversationId = currentId
+                )
+                if (currentId != null) {
+                    loadMessages(currentId)
+                }
             }
-            _status.value = router.status()
-            _sending.value = false
         }
     }
 
-    // --- Settings ---
-    fun keyCount(providerId: String): Int = keyStore.keys(providerId).size
-
-    fun addKey(providerId: String, key: String) {
-        keyStore.add(providerId, key)
-        router.clearRejectedKeys()
-        _status.value = router.status()
+    fun startNewConversation() {
+        viewModelScope.launch {
+            val id = UUID.randomUUID().toString()
+            val convTitle = getApplication<Application>().getString(app.wakil.agent.R.string.new_chat)
+            val conv = ConversationEntity(id = id, title = convTitle)
+            database.conversationDao().insertConversation(conv)
+            _uiState.value = _uiState.value.copy(currentConversationId = id)
+            loadMessages(id)
+        }
     }
 
-    fun clearKeys(providerId: String) {
-        keyStore.clear(providerId)
-        _status.value = router.status()
+    fun selectConversation(id: String) {
+        _uiState.value = _uiState.value.copy(currentConversationId = id)
+        loadMessages(id)
     }
 
-    fun model(providerId: String): String =
-        settings.model(providerId)
-            ?: ProviderCatalog.entries.first { it.id == providerId }.defaultModel
-
-    fun setModel(providerId: String, model: String) = settings.setModel(providerId, model)
-
-    fun refreshStatus() {
-        _status.value = router.status()
+    private fun loadMessages(conversationId: String) {
+        viewModelScope.launch {
+            database.conversationDao().getMessagesForConversationFlow(conversationId).collect { msgs ->
+                _uiState.value = _uiState.value.copy(messages = msgs)
+            }
+        }
     }
 
-    private companion object {
-        // Instruction for the model, not UI text.
-        const val SYSTEM_PROMPT =
-            "You are Wakil, a helpful assistant. Reply in the language of the user's last message " +
-                "(Arabic including Algerian Darija, French, or English). Be concise and honest; say when you do not know."
+    fun onInputTextChange(text: String) {
+        _uiState.value = _uiState.value.copy(inputText = text)
+    }
+
+    fun sendMessage() {
+        val text = _uiState.value.inputText.trim()
+        if (text.isEmpty() || _uiState.value.isStreaming) return
+
+        val convId = _uiState.value.currentConversationId ?: return
+
+        viewModelScope.launch {
+            val userMsg = MessageEntity(
+                id = UUID.randomUUID().toString(),
+                conversationId = convId,
+                role = "user",
+                content = text
+            )
+            database.conversationDao().insertMessage(userMsg)
+            _uiState.value = _uiState.value.copy(inputText = "", isStreaming = true, currentStreamingChunk = "")
+
+            val history = database.conversationDao().getMessagesForConversation(convId).map {
+                val role = when (it.role) {
+                    "assistant" -> Role.ASSISTANT
+                    "system" -> Role.SYSTEM
+                    else -> Role.USER
+                }
+                ChatMessage(role, it.content)
+            }
+
+            val assistantMsgId = UUID.randomUUID().toString()
+            val streamedAccumulator = StringBuilder()
+
+            streamJob = launch {
+                val result = router.chatStream(history) { chunk ->
+                    streamedAccumulator.append(chunk)
+                    _uiState.value = _uiState.value.copy(currentStreamingChunk = streamedAccumulator.toString())
+                }
+
+                when (result) {
+                    is RouterResult.Success -> {
+                        val replyText = if (streamedAccumulator.isNotEmpty()) streamedAccumulator.toString() else result.text
+                        val assistantMsg = MessageEntity(
+                            id = assistantMsgId,
+                            conversationId = convId,
+                            role = "assistant",
+                            content = replyText,
+                            providerId = result.providerId,
+                            model = result.model
+                        )
+                        database.conversationDao().insertMessage(assistantMsg)
+                    }
+                    is RouterResult.Failure -> {
+                        val errText = "All providers failed"
+                        val assistantMsg = MessageEntity(
+                            id = assistantMsgId,
+                            conversationId = convId,
+                            role = "assistant",
+                            content = errText,
+                            status = "FAILED"
+                        )
+                        database.conversationDao().insertMessage(assistantMsg)
+                    }
+                }
+                _uiState.value = _uiState.value.copy(isStreaming = false, currentStreamingChunk = "")
+            }
+        }
+    }
+
+    fun stopGenerating() {
+        streamJob?.cancel()
+        _uiState.value = _uiState.value.copy(isStreaming = false)
+    }
+
+    fun confirmPendingAction() {
+        viewModelScope.launch {
+            _uiState.value.pendingApproval?.onConfirm?.invoke()
+            _uiState.value = _uiState.value.copy(pendingApproval = null)
+        }
+    }
+
+    fun dismissPendingAction() {
+        _uiState.value = _uiState.value.copy(pendingApproval = null)
     }
 }

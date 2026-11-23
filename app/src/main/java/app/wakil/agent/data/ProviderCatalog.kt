@@ -7,8 +7,9 @@ object ProviderCatalog {
     data class Entry(val id: String, val baseUrl: String, val defaultModel: String)
 
     val entries = listOf(
-        Entry("groq", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b"),
+        Entry("groq", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
         Entry("gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash"),
+        Entry("cloudflare", "https://api.cloudflare.com/client/v4/ai/v1", "@cf/meta/llama-3.3-70b-instruct"),
         Entry("openrouter", "https://openrouter.ai/api/v1", "meta-llama/llama-3.3-70b-instruct:free"),
         Entry("mistral", "https://api.mistral.ai/v1", "mistral-small-latest"),
     )
