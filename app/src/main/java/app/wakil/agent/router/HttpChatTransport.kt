@@ -11,7 +11,15 @@ import org.json.JSONObject
 class HttpChatTransport(private val timeoutMs: Int = 60_000) : ChatTransport {
 
     @Throws(IOException::class)
-    override suspend fun post(url: String, apiKey: String, body: String): HttpReply = withContext(Dispatchers.IO) {
+    override suspend fun post(url: String, apiKey: String, body: String): HttpReply =
+        post(url, apiKey, body, emptyMap())
+
+    override suspend fun post(
+        url: String,
+        apiKey: String,
+        body: String,
+        headers: Map<String, String>,
+    ): HttpReply = withContext(Dispatchers.IO) {
         val conn = URL(url).openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
@@ -20,6 +28,7 @@ class HttpChatTransport(private val timeoutMs: Int = 60_000) : ChatTransport {
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json")
             conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            headers.forEach { (name, value) -> conn.setRequestProperty(name, value) }
             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             val status = conn.responseCode
             val stream = if (status in 200..299) conn.inputStream else conn.errorStream
@@ -40,6 +49,14 @@ class HttpChatTransport(private val timeoutMs: Int = 60_000) : ChatTransport {
         apiKey: String,
         body: String,
         onChunk: (String) -> Unit
+    ): HttpReply = stream(url, apiKey, body, emptyMap(), onChunk)
+
+    override suspend fun stream(
+        url: String,
+        apiKey: String,
+        body: String,
+        headers: Map<String, String>,
+        onChunk: (String) -> Unit,
     ): HttpReply = withContext(Dispatchers.IO) {
         val conn = URL(url).openConnection() as HttpURLConnection
         try {
@@ -50,6 +67,7 @@ class HttpChatTransport(private val timeoutMs: Int = 60_000) : ChatTransport {
             conn.setRequestProperty("Content-Type", "application/json")
             conn.setRequestProperty("Accept", "text/event-stream")
             conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            headers.forEach { (name, value) -> conn.setRequestProperty(name, value) }
 
             // Make sure stream is true in body
             val streamBody = try {
@@ -90,7 +108,12 @@ class HttpChatTransport(private val timeoutMs: Int = 60_000) : ChatTransport {
                 }
             }
 
-            val synthesizedBody = """{"choices":[{"message":{"role":"assistant","content":"${fullText.toString().replace("\"", "\\\"")}}}]}"""
+            val message = JSONObject()
+                .put("role", "assistant")
+                .put("content", fullText.toString())
+            val synthesizedBody = JSONObject()
+                .put("choices", org.json.JSONArray().put(JSONObject().put("message", message)))
+                .toString()
             HttpReply(status, synthesizedBody, headers)
         } finally {
             conn.disconnect()
