@@ -1,6 +1,7 @@
 package app.wakil.agent.domain.rules
 
-import java.util.UUID
+import java.time.Instant
+import java.time.ZoneId
 
 enum class ProjectStatus {
     IDEA, PLANNED, ACTIVE, PAUSED, COMPLETED, ARCHIVED
@@ -58,6 +59,8 @@ object LifeRules {
         nowEpochMs: Long
     ): List<PriorityItem> {
         val activeProjectIds = activeProjects.map { it.id }.toSet()
+        val zone = ZoneId.systemDefault()
+        val today = Instant.ofEpochMilli(nowEpochMs).atZone(zone).toLocalDate()
         val openTasks = tasks.filter { it.status != TaskStatus.DONE && it.status != TaskStatus.CANCELLED && !it.isDeleted }
 
         val scored = openTasks.map { task ->
@@ -65,7 +68,8 @@ object LifeRules {
             var reason = "reason_priority_standard"
 
             val isOverdue = task.dueDate != null && task.dueDate < nowEpochMs
-            val isDueToday = task.dueDate != null && !isOverdue && (task.dueDate - nowEpochMs <= 24 * 60 * 60 * 1000L)
+            val isDueToday = task.dueDate != null && !isOverdue &&
+                Instant.ofEpochMilli(task.dueDate).atZone(zone).toLocalDate() == today
             val isLinkedToActiveProject = task.projectId != null && task.projectId in activeProjectIds
 
             if (isOverdue) {

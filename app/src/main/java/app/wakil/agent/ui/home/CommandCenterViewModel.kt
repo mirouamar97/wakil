@@ -3,6 +3,7 @@ package app.wakil.agent.ui.home
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import app.wakil.agent.data.SettingsStore
 import app.wakil.agent.data.local.WakilDatabase
 import app.wakil.agent.data.local.entities.ProjectEntity
@@ -14,7 +15,7 @@ import app.wakil.agent.domain.rules.ProjectRuleInput
 import app.wakil.agent.domain.rules.ProjectStatus
 import app.wakil.agent.domain.rules.TaskRuleInput
 import app.wakil.agent.domain.rules.TaskStatus
-import app.wakil.agent.tools.AgentTools
+import app.wakil.agent.tools.ActionLogFactory
 import app.wakil.agent.tools.DailyBriefing
 import app.wakil.agent.tools.DailyBriefingData
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,8 +38,6 @@ data class CommandCenterUiState(
 class CommandCenterViewModel(application: Application) : AndroidViewModel(application) {
     private val database = WakilDatabase.getInstance(application)
     private val settingsStore = SettingsStore(application)
-    private val agentTools = AgentTools(database, settingsStore)
-
     private val _uiState = MutableStateFlow(CommandCenterUiState())
     val uiState: StateFlow<CommandCenterUiState> = _uiState.asStateFlow()
 
@@ -93,18 +92,25 @@ class CommandCenterViewModel(application: Application) : AndroidViewModel(applic
         val text = _uiState.value.quickCaptureText.trim()
         if (text.isEmpty()) return
         viewModelScope.launch {
-            agentTools.executeCreateTask(
-                title = text,
-                reason = "Quick capture from Command Center"
-            )
+            val task = TaskEntity(title = text)
+            database.withTransaction {
+                database.taskDao().insertTask(task)
+                database.actionLogDao().insertActionLog(ActionLogFactory.created("TASK", task.id, task.title))
+            }
             _uiState.value = _uiState.value.copy(quickCaptureText = "")
         }
     }
 
     fun toggleTaskDone(task: TaskEntity) {
         viewModelScope.launch {
-            val nextStatus = if (task.status == TaskStatus.DONE) TaskStatus.TODO else TaskStatus.DONE
-            database.taskDao().updateTask(task.copy(status = nextStatus, updatedAt = System.currentTimeMillis()))
+            database.withTransaction {
+                val current = database.taskDao().getTaskById(task.id) ?: return@withTransaction
+                val nextStatus = if (current.status == TaskStatus.DONE) TaskStatus.TODO else TaskStatus.DONE
+                database.taskDao().updateTask(current.copy(status = nextStatus, updatedAt = System.currentTimeMillis()))
+                database.actionLogDao().insertActionLog(
+                    ActionLogFactory.taskStatusChanged(current.id, current.title, current.status)
+                )
+            }
         }
     }
 }

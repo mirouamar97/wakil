@@ -25,6 +25,9 @@ interface GoalDao {
     @Query("SELECT * FROM goals WHERE isDeleted = 0")
     suspend fun getAllGoals(): List<GoalEntity>
 
+    @Query("SELECT * FROM goals")
+    suspend fun getAllGoalsForBackup(): List<GoalEntity>
+
     @Query("SELECT * FROM goals WHERE id = :id LIMIT 1")
     suspend fun getGoalById(id: String): GoalEntity?
 
@@ -46,6 +49,9 @@ interface ProjectDao {
     @Query("SELECT * FROM projects WHERE isDeleted = 0")
     suspend fun getAllProjects(): List<ProjectEntity>
 
+    @Query("SELECT * FROM projects")
+    suspend fun getAllProjectsForBackup(): List<ProjectEntity>
+
     @Query("SELECT * FROM projects WHERE id = :id LIMIT 1")
     suspend fun getProjectById(id: String): ProjectEntity?
 
@@ -61,8 +67,23 @@ interface ProjectDao {
     @Query("SELECT * FROM milestones WHERE projectId = :projectId ORDER BY orderIndex ASC")
     fun getMilestonesForProject(projectId: String): Flow<List<MilestoneEntity>>
 
+    @Query("SELECT * FROM milestones")
+    suspend fun getAllMilestones(): List<MilestoneEntity>
+
+    @Query("SELECT COALESCE(MAX(orderIndex), -1) + 1 FROM milestones WHERE projectId = :projectId")
+    suspend fun nextMilestoneOrderIndex(projectId: String): Int
+
+    @Query("SELECT * FROM milestones ORDER BY projectId, orderIndex")
+    fun getAllMilestonesFlow(): Flow<List<MilestoneEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMilestone(milestone: MilestoneEntity)
+
+    @Update
+    suspend fun updateMilestone(milestone: MilestoneEntity)
+
+    @Query("DELETE FROM milestones WHERE id = :id")
+    suspend fun deleteMilestone(id: String)
 }
 
 @Dao
@@ -72,6 +93,9 @@ interface TaskDao {
 
     @Query("SELECT * FROM tasks WHERE isDeleted = 0")
     suspend fun getAllTasks(): List<TaskEntity>
+
+    @Query("SELECT * FROM tasks")
+    suspend fun getAllTasksForBackup(): List<TaskEntity>
 
     @Query("SELECT * FROM tasks WHERE id = :id LIMIT 1")
     suspend fun getTaskById(id: String): TaskEntity?
@@ -97,6 +121,9 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE isDeleted = 0")
     suspend fun getAllNotes(): List<NoteEntity>
 
+    @Query("SELECT * FROM notes")
+    suspend fun getAllNotesForBackup(): List<NoteEntity>
+
     @Query("SELECT * FROM notes WHERE id = :id LIMIT 1")
     suspend fun getNoteById(id: String): NoteEntity?
 
@@ -114,6 +141,15 @@ interface NoteDao {
 
     @Query("SELECT * FROM note_links WHERE noteId = :noteId")
     suspend fun getLinksForNote(noteId: String): List<NoteLinkEntity>
+
+    @Query("SELECT * FROM note_links ORDER BY createdAt DESC")
+    fun getAllNoteLinksFlow(): Flow<List<NoteLinkEntity>>
+
+    @Query("SELECT * FROM note_links")
+    suspend fun getAllNoteLinks(): List<NoteLinkEntity>
+
+    @Query("DELETE FROM note_links WHERE id = :id")
+    suspend fun deleteNoteLink(id: String)
 }
 
 @Dao
@@ -123,6 +159,9 @@ interface ConversationDao {
 
     @Query("SELECT * FROM conversations WHERE isArchived = 0 ORDER BY updatedAt DESC")
     suspend fun getAllConversations(): List<ConversationEntity>
+
+    @Query("SELECT * FROM conversations")
+    suspend fun getAllConversationsForBackup(): List<ConversationEntity>
 
     @Query("SELECT * FROM conversations WHERE id = :id LIMIT 1")
     suspend fun getConversationById(id: String): ConversationEntity?
@@ -135,6 +174,9 @@ interface ConversationDao {
 
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY createdAt ASC")
     suspend fun getMessagesForConversation(conversationId: String): List<MessageEntity>
+
+    @Query("SELECT * FROM messages")
+    suspend fun getAllMessages(): List<MessageEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)
@@ -150,6 +192,9 @@ interface ActionLogDao {
 
     @Query("SELECT * FROM action_logs ORDER BY createdAt DESC")
     suspend fun getAllActionLogs(): List<ActionLogEntity>
+
+    @Query("SELECT * FROM action_logs")
+    suspend fun getAllActionLogsForBackup(): List<ActionLogEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertActionLog(actionLog: ActionLogEntity)
@@ -168,6 +213,9 @@ interface UserMemoryDao {
 
     @Query("SELECT * FROM user_memories WHERE approvalStatus = 'APPROVED' ORDER BY createdAt DESC")
     suspend fun getApprovedMemories(): List<UserMemoryEntity>
+
+    @Query("SELECT * FROM user_memories")
+    suspend fun getAllMemoriesForBackup(): List<UserMemoryEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMemory(memory: UserMemoryEntity)
