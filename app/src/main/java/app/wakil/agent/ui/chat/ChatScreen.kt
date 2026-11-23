@@ -17,6 +17,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -24,6 +26,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +40,10 @@ import app.wakil.agent.R
 @Composable
 fun ChatScreen(viewModel: ChatViewModel) {
     val state by viewModel.uiState.collectAsState()
+    var showConversations by remember { mutableStateOf(false) }
+    val currentTitle = state.conversations
+        .firstOrNull { it.id == state.currentConversationId }
+        ?.title
 
     Column(
         modifier = Modifier
@@ -47,16 +56,46 @@ fun ChatScreen(viewModel: ChatViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = stringResource(R.string.conversations_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
+            Box {
+                TextButton(onClick = { showConversations = true }) {
+                    Text(
+                        text = currentTitle ?: stringResource(R.string.conversations_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                DropdownMenu(
+                    expanded = showConversations,
+                    onDismissRequest = { showConversations = false }
+                ) {
+                    state.conversations.forEach { conversation ->
+                        DropdownMenuItem(
+                            text = { Text(conversation.title) },
+                            onClick = {
+                                showConversations = false
+                                viewModel.selectConversation(conversation.id)
+                            }
+                        )
+                    }
+                }
+            }
             Button(onClick = viewModel::startNewConversation) {
                 Text(text = stringResource(R.string.new_chat))
             }
         }
 
+        Spacer(modifier = Modifier.padding(4.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+        ) {
+            Text(
+                text = stringResource(R.string.chat_external_privacy_notice),
+                modifier = Modifier.padding(12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
         Spacer(modifier = Modifier.padding(4.dp))
 
         // Messages List
