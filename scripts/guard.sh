@@ -32,6 +32,17 @@ mailhits=$(echo "$files" | grep -vE '^(scripts/guard\.sh|\.gitleaks\.toml|gradle
 red='^(\.github/|scripts/guard\.sh|\.github/CODEOWNERS|\.gitleaks\.toml|app/src/main/java/app/wakil/agent/permissions/|.*\.jks|.*\.keystore)'
 head_ref="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}"
 base_ref="${GITHUB_BASE_REF:-main}"
+
+# 3a) EVERY branch (not only agent branches): no change under .github/workflows/ may pass this check.
+# Workflow edits are a CI-takeover vector; a human owner who really needs one merges it past this check on purpose.
+if [ "$head_ref" != "main" ] && [ "$head_ref" != "HEAD" ]; then
+  if git fetch -q origin "$base_ref"; then
+    wf=$(git diff --name-only "origin/$base_ref"...HEAD 2>/dev/null | grep -E '^\.github/workflows/' || true)
+    [ -n "$wf" ] && say "branch '$head_ref' changes workflow file(s) (any file under .github/workflows/ is blocked):" && echo "$wf"
+  else
+    say "failed to fetch origin/$base_ref (failing closed)"
+  fi
+fi
 case "$head_ref" in
   evolve/*|agent/*|claude/*|opencode/*|gemini/*|rebuild)
     if ! git fetch -q origin "$base_ref"; then
