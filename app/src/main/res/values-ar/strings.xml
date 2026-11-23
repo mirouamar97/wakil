@@ -14,6 +14,7 @@
 
     <string name="provider_groq">Groq</string>
     <string name="provider_gemini">Gemini</string>
+    <string name="provider_cloudflare">Cloudflare</string>
     <string name="provider_openrouter">OpenRouter</string>
     <string name="provider_mistral">Mistral</string>
     <string name="provider_unknown">؟</string>
@@ -44,4 +45,86 @@
     <string name="key_add">أضف المفتاح</string>
     <string name="key_clear">احذف كل المفاتيح</string>
     <string name="model_field">اسم النموذج</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_projects">المشاريع</string>
+    <string name="nav_chat">المحادثة</string>
+    <string name="nav_settings">الإعدادات</string>
+
+    <!-- Command Center -->
+    <string name="command_center_title">مركز القيادة</string>
+    <string name="top_priorities_title">أهم 3 أولويات</string>
+    <string name="overdue_tasks_title">المهام المتأخرة</string>
+    <string name="active_projects_title">المشاريع النشطة</string>
+    <string name="quick_capture_hint">التقاط سريع لمهمة أو فكرة…</string>
+    <string name="quick_capture_button">التقاط</string>
+    <string name="daily_briefing_title">الموجز اليومي</string>
+    <string name="next_action_label">الخطوة التالية: %1$s</string>
+    <string name="no_next_action_warn">لا توجد خطوة تالية محددة!</string>
+    <string name="no_priorities_yet">لا توجد أولويات معلّقة. يومك سعيد!</string>
+    <string name="no_overdue_tasks">لا توجد مهام متأخرة.</string>
+    <string name="no_active_projects">لا توجد مشاريع نشطة حالياً.</string>
+
+    <!-- Reasons -->
+    <string name="reason_overdue">متأخرة عن الموعد</string>
+    <string name="reason_due_today">مستحقة اليوم</string>
+    <string name="reason_high_priority">أولوية قصوى</string>
+    <string name="reason_active_project">مشروع نشط</string>
+    <string name="reason_in_progress">قيد التنفيذ</string>
+    <string name="reason_priority_standard">مجدولة</string>
+    <string name="warn_active_projects_limit">تجاوزت الحد الأقصى للمشاريع النشطة! يُنصح بإيقاف أحدها مؤقتاً.</string>
+    <string name="suggest_pause_project">مشروع مقترح إيقافه: %1$s</string>
+
+    <!-- Projects and Tasks -->
+    <string name="projects_title">المشاريع</string>
+    <string name="tasks_title">المهام</string>
+    <string name="goals_title">الأهداف</string>
+    <string name="notes_title">الملاحظات</string>
+    <string name="filter_all">الكل</string>
+    <string name="filter_active">النشطة</string>
+    <string name="filter_completed">المكتملة</string>
+    <string name="status_idea">فكرة</string>
+    <string name="status_planned">مخطط</string>
+    <string name="status_active">نشط</string>
+    <string name="status_paused">متوقف مؤقتاً</string>
+    <string name="status_completed">مكتمل</string>
+    <string name="status_archived">مؤرشف</string>
+    <string name="add_project">إضافة مشروع</string>
+    <string name="add_task">إضافة مهمة</string>
+    <string name="add_goal">إضافة هدف</string>
+    <string name="add_note">إضافة ملاحظة</string>
+    <string name="title_field">العنوان</string>
+    <string name="description_field">الوصف</string>
+    <string name="next_action_field">الخطوة التالية</string>
+    <string name="save">حفظ</string>
+    <string name="cancel">إلغاء</string>
+    <string name="delete">حذف</string>
+    <string name="undo">تراجع</string>
+    <string name="undo_success">تم التراجع بنجاح</string>
+    <string name="undo_failed">لا يوجد إجراء للتراجع عنه</string>
+
+    <!-- Chat & Actions -->
+    <string name="conversations_title">المحادثات</string>
+    <string name="new_chat">محادثة جديدة</string>
+    <string name="stop_generating">إيقاف</string>
+    <string name="confirm_action_title">مطلوب موافقتك</string>
+    <string name="confirm_action_desc">يرغب المساعد في تنفيذ: %1$s</string>
+    <string name="approve">موافق</string>
+    <string name="reject">رفض</string>
+
+    <!-- Settings Extra -->
+    <string name="kill_switch_title">زر الإيقاف الطارئ (Kill Switch)</string>
+    <string name="kill_switch_desc">يمنع فوراً جميع أدوات وإجراءات المساعد الذكي</string>
+    <string name="max_projects_title">الحد الأقصى للمشاريع النشطة</string>
+    <string name="export_backup">تصدير نسخة احتياطية (JSON)</string>
+    <string name="import_backup">استيراد نسخة احتياطية (JSON)</string>
+    <string name="backup_success">تمت معالجة النسخة الاحتياطية بنجاح</string>
+    <string name="backup_failed">فشلت عملية النسخ الاحتياطي</string>
+    <string name="import_preview_title">معاينة النسخة الاحتياطية</string>
+    <string name="import_confirm">تأكيد الاستيراد</string>
+    <string name="action_logs_title">سجل الأفعال</string>
+    <string name="memories_title">الذكريات المحفوظة</string>
+    <string name="no_memories">لا توجد ذكريات محفوظة بعد.</string>
+    <string name="no_logs">لا توجد سجلات أفعال بعد.</string>
 </resources>

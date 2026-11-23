@@ -12,3 +12,21 @@ Append-only log of what was merged or rejected, and why. The agent reads this be
 
 ## W1 fixes
 - Whole `.github/workflows/` folder is now a red path (agents may not edit it), because build.yml uses signing secrets.
+
+## Security Hardening (PR #4)
+- Fixed guard script to fail-closed on git fetch / diff failures.
+- Expanded red path patterns to encompass all of `.github/`, `scripts/guard.sh`, `.gitleaks.toml`, and keystores.
+- Expanded branch checks to `evolve/*|agent/*|claude/*|opencode/*|gemini/*|rebuild`.
+- Ensured `guard.yml` checks out trusted base branch version of `guard.sh` during PR validation.
+- Restricted `build.yml` default permissions to `contents: read`.
+- Added strict `.gitleaks.toml`.
+
+## R0-R3 Complete Rebuild (branch rebuild)
+- Integrated personal life OS into Wakil: Room database with entities for Goals, Projects, Milestones, Tasks, Notes, NoteLinks, Conversations, Messages, ActionLogs, and UserMemories.
+- Added pure Kotlin deterministic `LifeRules`: Top 3 priorities with reason codes, active projects limit warning and pause suggestion (max 3), next action verification for active projects, and overdue task detection.
+- Added streaming chat support (`chatStream`) to `ModelRouter` and `HttpChatTransport` with live chunk emission, cancellation, and provider attribution.
+- Added local AI Agent tools (L0/L1) with mandatory approval dialogs for `DELETE` and deadline changes.
+- Added emergency Kill Switch in Settings to halt tool execution immediately.
+- Added JSON export and import with preview using `kotlinx.serialization`.
+- Expanded trilingual resources (`ar`, `fr`, `en`) to 111 keys with 100% parity and verified with `check_i18n.py`.
+- Pinned all dependencies in `gradle/libs.versions.toml` with Version Catalog.

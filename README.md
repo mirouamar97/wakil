@@ -1,36 +1,42 @@
 # Wakil (وكيل)
 
-A free Android AI assistant that talks to several free LLM providers and moves to the next one when a quota runs out.
+A free, local-first native Android personal AI assistant with an integrated personal life-management layer.
 
-**Status: early. Only stage W1 exists** — a chat screen, a provider router, and Arabic / French / English UI. There are no tools, no memory, no self-development loop yet. Those are planned, not built.
+## Overview
 
-## What works today (W1)
+Wakil combines two essential layers:
+1. **The Intelligence Layer (Wakil):** Streaming chat with ModelRouter across free LLM providers (Groq, Gemini Flash, Cloudflare Workers AI, OpenRouter, Mistral), key rotation, quota tracking via rate-limit headers, and local AI agent tools (L0 read, L1 local write).
+2. **The Personal Life Layer:** Grounded local database (Room) for Goals, Projects, Tasks, Notes, Action History, and Daily Command Center. Works 100% offline.
 
-- Chat with an LLM through any OpenAI-compatible endpoint.
-- `ModelRouter`: tries providers in order (Groq, then Gemini, then OpenRouter, then Mistral), switches on HTTP 429, reads `x-ratelimit-*` response headers and shows the remaining quota when the provider sends them.
-- You enter your own free API keys in Settings. They are stored with `EncryptedSharedPreferences` and never leave the device except in requests to the provider you chose.
-- UI in Arabic (RTL), French and English; no hard-coded UI strings (checked in CI).
+## Core Features
 
-## Not built yet
+- **Command Center:** Deterministic Top 3 daily priorities, overdue task detection, active project tracking with next action verification, and one-line quick capture.
+- **ModelRouter with Streaming:** Live streaming responses with failover on HTTP 429/5xx/network errors, header-based quota tracking, and EncryptedSharedPreferences (Android Keystore backed) storage for user keys.
+- **Safety & Permissions:** Hard rule that record deletion and deadline changes require explicit user approval. Emergency Kill Switch immediately blocks assistant actions. Action log with full undo support.
+- **Backup & Restore:** Fast, offline JSON export and import with preview using Android Storage Access Framework.
+- **Trilingual & RTL-First:** Native support for Arabic (default, RTL with Cairo font), French, and English. Zero hard-coded UI strings.
 
-Tools, permissions, memory, skills, sub-agents, Ollama/Tailscale home server, on-device model, self-evolution loop. See `docs`-style plan in the owner's private notes; this README will only list what really exists.
+## Architecture
 
-## Public repository rules
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full system architecture, entity relationships, and permission policies.
 
-This repo is public so GitHub Actions minutes are free. Therefore: no secrets, no personal data. `guard.yml` enforces it on every PR (gitleaks, forbidden files, e-mail/phone patterns, red paths).
+## Repository Safety
 
-## Build
+This is a public repository:
+- No secrets or personal data, ever. Enforced by `.github/workflows/guard.yml` and Gitleaks.
+- Sensitive workflows and security files are strictly protected red paths.
 
-CI builds everything (`.github/workflows/build.yml`): i18n check, unit tests, APK. Merged commits on `main` publish a signed APK in Releases.
+## Build & Test
 
-To build locally you need JDK 17 and the Android SDK: `./gradlew testDebugUnitTest assembleDebug`.
-
-## Layout
-
+Built in CI via `.github/workflows/build.yml` on JDK 17:
+```bash
+./gradlew testDebugUnitTest assembleDebug
 ```
-app/        Android app (Kotlin, Jetpack Compose)
-skills/     agent skills, plain Markdown (empty for now)
-agents/     sub-agent definitions, Markdown (empty for now)
-server/     scripts for a home server (empty for now)
-scripts/    CI helpers (guard, i18n check)
+Check localization parity:
+```bash
+python scripts/check_i18n.py
+```
+Check repository security guard:
+```bash
+bash scripts/guard.sh
 ```

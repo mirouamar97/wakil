@@ -8,6 +8,7 @@ import app.wakil.agent.router.Outcome
 fun providerName(id: String): Int = when (id) {
     "groq" -> R.string.provider_groq
     "gemini" -> R.string.provider_gemini
+    "cloudflare" -> R.string.provider_cloudflare
     "openrouter" -> R.string.provider_openrouter
     "mistral" -> R.string.provider_mistral
     else -> R.string.provider_unknown
