@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # Release is published only from a push to main
+  contents: read
 
 jobs:
   i18n:
@@ -21,6 +21,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: i18n
+    permissions:
+      contents: write # Scoped strictly for publishing GitHub Release on push to main
     steps:
       - uses: actions/checkout@v4
 

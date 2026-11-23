@@ -1,0 +1,12 @@
+# Gitleaks configuration for Wakil (mirouamar97/wakil)
+title = "Wakil Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Strict allowlist for license texts and binary wrapper"
+paths = [
+  '''^licenses/.*''',
+  '''^gradle/wrapper/.*''',
+]
