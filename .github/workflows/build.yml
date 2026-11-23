@@ -22,9 +22,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: i18n
     permissions:
-      contents: write # Scoped strictly for publishing GitHub Release on push to main
+      contents: write # only the final publish step receives the token (GH_TOKEN env); see persist-credentials below
     steps:
+      # persist-credentials: false keeps the write-scoped token out of .git/config, so Gradle scripts and tests that run
+      # PR code cannot read it (security review M8, finding H2).
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Skip if the Android project does not exist yet
         id: has_app
